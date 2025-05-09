@@ -8,6 +8,8 @@ interface TotalUsageContextType {
     setUserPlan: (value: string) => void;
     isCreditsAvailable: boolean;
     setIsCreditsAvailable: (value: boolean) => void;
+    maxCredits: number;
+    setMaxCredits: (value: number) => void;
 }
 
 const defaultValue: TotalUsageContextType = {
@@ -17,6 +19,8 @@ const defaultValue: TotalUsageContextType = {
     setUserPlan: () => {},
     isCreditsAvailable: true,
     setIsCreditsAvailable: () => {},
+    maxCredits: 500000,
+    setMaxCredits: () => {},
 };
 
 export const TotalUsageContext = createContext<TotalUsageContextType>(defaultValue);
@@ -25,6 +29,7 @@ export const TotalUsageProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [totalUsage, setTotalUsage] = useState<number>(0);
     const [userPlan, setUserPlan] = useState<string>('free');
     const [isCreditsAvailable, setIsCreditsAvailable] = useState<boolean>(true);
+    const [maxCredits, setMaxCredits] = useState<number>(500000); // Default to 500000 for free plan
 
     return (
         <TotalUsageContext.Provider value={{ 
@@ -33,7 +38,9 @@ export const TotalUsageProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             userPlan,
             setUserPlan,
             isCreditsAvailable,
-            setIsCreditsAvailable
+            setIsCreditsAvailable,
+            maxCredits,
+            setMaxCredits
         }}>
             {children}
         </TotalUsageContext.Provider>

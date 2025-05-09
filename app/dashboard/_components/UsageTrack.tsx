@@ -7,7 +7,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import { HISTORY } from '../history/page';
 import { eq } from 'drizzle-orm';
 import { TotalUsageContext } from '@/app/(context)/TotalUsageContext';
-import { Dialog, DialogContent, DialogTrigger } from "../../../components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../../components/ui/dialog";
 import PricingPlans from '../billing/_components/PricingPlans';
 import { useToast } from "../../../hooks/use-toast";
 
@@ -21,7 +21,16 @@ function UsageTrack() {
     throw new Error('UsageTrack must be used within a TotalUsageContext.Provider');
   }
 
-  const { totalUsage, setTotalUsage, isCreditsAvailable, setIsCreditsAvailable } = context;
+  const { 
+    totalUsage, 
+    setTotalUsage, 
+    userPlan: contextUserPlan, 
+    setUserPlan: setUserPlanContext, 
+    isCreditsAvailable, 
+    setIsCreditsAvailable,
+    maxCredits,
+    setMaxCredits 
+  } = context;
 
   useEffect(() => {
     if (user) {
@@ -31,10 +40,29 @@ function UsageTrack() {
 
   const getData = async (user: any) => {
     try {
-      const result: typeof AiOutput[] = await db.select().from(AiOutput)
+      const result = await db.select().from(AiOutput)
         .where(eq(AiOutput.createdBy, user?.primaryEmailAddress?.emailAddress));
+      
+      // Check if the user has any records and get their plan/credits info
+      if (result.length > 0) {
+        const userRecord = result[0];
+        console.log('User record found:', userRecord);
+        
+        // Get the user's plan and credits
+        if (userRecord.plan) {
+          setUserPlanContext(userRecord.plan);
+          
+          // Set the max credits based on the plan
+          if (userRecord.credits) {
+            setMaxCredits(userRecord.credits);
+            console.log(`Setting max credits to ${userRecord.credits} based on plan ${userRecord.plan}`);
+          }
+        }
+      }
+      
       getTotalUsage(result);
     } catch (error) {
+      console.error('Error fetching user data:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -43,53 +71,77 @@ function UsageTrack() {
     }
   };
 
-  const getTotalUsage = (result: HISTORY[]) => {
+  const getTotalUsage = (result: any[]) => {
     let total: number = 0;
     result.forEach(element => {
-      total += Number(element.aiResponse?.length);
+      // Safely handle null or undefined aiResponse
+      const responseLength = element.aiResponse?.length || 0;
+      total += Number(responseLength);
     });
+    
     setTotalUsage(total);
-    setIsCreditsAvailable(total < 20000);
+    // Use the maxCredits from context instead of hardcoded 20000
+    const creditLimit = context.maxCredits || 20000;
+    setIsCreditsAvailable(total < creditLimit);
   };
 
   const handleUpgradeClick = () => {
     setIsUpgradeOpen(true);
   };
 
+  // Safely get the max credits value
+  const creditLimit = context.maxCredits || 500000;
+  
+  // Add this to fix hydration errors
+  const [isClient, setIsClient] = useState(false);
+  
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+  
   return (
-    <div className='m-5'>
+    <div className='m-5' suppressHydrationWarning>
       <div className={`p-3 text-white rounded-lg ${
-        totalUsage >= 20000 ? 'bg-red-600' : 
-        totalUsage >= 15000 ? 'bg-yellow-600' : 
+        totalUsage >= creditLimit ? 'bg-red-600' : 
+        totalUsage >= (creditLimit * 0.75) ? 'bg-yellow-600' : 
         'bg-primary'
       }`}>
-        <h2>Credits</h2>
-        <div className='h-2 bg-[#9981f9] w-full rounded-full mt-3'>
-          <div className='h-2 bg-white rounded-full'
-            style={{
-              width: `${Math.min((totalUsage / 20000) * 100, 100)}%`
-            }}>
+        <h2>Credits ({contextUserPlan || 'Free Plan'})</h2>
+        {isClient ? (
+          <>
+            <div className='h-2 bg-[#9981f9] w-full rounded-full mt-3'>
+              <div className='h-2 bg-white rounded-full'
+                style={{
+                  width: `${Math.min((totalUsage / creditLimit) * 100, 100)}%`
+                }}>
+              </div>
+            </div>
+            <h2 className='text-sm my-2'>{totalUsage}/{creditLimit.toLocaleString()} Credits used</h2>
+            {totalUsage >= (creditLimit * 0.75) && (
+              <p className='text-xs mt-1'>
+                {totalUsage >= creditLimit ? 'Credits exhausted!' : 'Credits running low!'}
+              </p>
+            )}
+          </>
+        ) : (
+          <div className='h-2 bg-[#9981f9] w-full rounded-full mt-3'>
+            <div className='h-2 bg-white rounded-full' style={{ width: '0%' }}></div>
           </div>
-        </div>
-        <h2 className='text-sm my-2'>{totalUsage}/20,000 Credits used</h2>
-        {totalUsage >= 15000 && (
-          <p className='text-xs mt-1'>
-            {totalUsage >= 20000 ? 'Credits exhausted!' : 'Credits running low!'}
-          </p>
         )}
       </div>
 
       <Dialog open={isUpgradeOpen} onOpenChange={setIsUpgradeOpen}>
         <DialogTrigger asChild>
           <Button 
-            variant={totalUsage >= 20000 ? 'destructive' : 'secondary'}
+            variant={totalUsage >= creditLimit ? 'destructive' : 'secondary'}
             className='w-full my-3'
             onClick={handleUpgradeClick}
           >
-            {totalUsage >= 20000 ? 'Upgrade Now' : 'Upgrade'}
+            {totalUsage >= creditLimit ? 'Upgrade Now' : 'Upgrade'}
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-[900px]">
+          <DialogTitle>Upgrade Your Plan</DialogTitle>
           <PricingPlans onSuccess={() => setIsUpgradeOpen(false)} />
         </DialogContent>
       </Dialog>
